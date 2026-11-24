@@ -238,6 +238,12 @@ button{cursor:pointer}
 .emb{background:#111;box-shadow:0 1px 1px #0000001a,0 10px 16px -12px #0007}
 .emb iframe{display:block;width:100%;height:100%;border:0;pointer-events:none}
 .emb.on iframe{pointer-events:auto}
+.epost{position:absolute;inset:0;background:#151515;display:grid;place-items:center;overflow:hidden}
+.epost img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.85}
+.epost .ename{position:absolute;top:14px;left:14px;font:500 12px/1 var(--sans);letter-spacing:.06em;color:#bbb}
+.epost.ig{background:linear-gradient(160deg,#2b2b2b,#141414)}
+.eplay,.vload{position:relative;width:62px;height:62px;border-radius:50%;border:0;background:#D7261Eee;color:#fff;font:18px/1 var(--sans);padding-left:4px;cursor:pointer;box-shadow:0 6px 18px #0006}
+.vload{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2}
 .emb .ebar{position:absolute;bottom:100%;left:0;right:0;height:26px;display:flex;align-items:center;justify-content:space-between;cursor:move;font:500 11px/1 var(--sans);letter-spacing:.04em;color:var(--mute)}
 .emb .ebar a{color:var(--navy);text-decoration:none;font-weight:400}
 #stylerow{display:none}
@@ -455,7 +461,7 @@ const tp = it => it.tape === false ? '' : ' tape';
 const capHTML = it => `<input class="cap" data-k="cap" value="${esc(it.cap)}" placeholder="Caption" aria-label="Caption">`;
 function mediaHTML(src, kind) {
   if (!src) return '<span><span class="plus" style="font:200 26px/1 var(--sans);display:block;margin-bottom:4px">+</span>Image, video or sketch</span>';
-  return kind === 'video' ? `<video ${srcAttr(src)} controls playsinline preload="metadata"></video>` : `<img ${srcAttr(src)} alt="">`;
+  return kind === 'video' ? vidHTML(src) : `<img ${srcAttr(src)} alt="">`;
 }
 function itemHTML(it) {
   const on = selS.has(it.id) ? ' on' : '', pos = `left:${it.x}px;top:${it.y}px;`, rz = '<i class="rz"></i>';
@@ -463,7 +469,7 @@ function itemHTML(it) {
     case 'text': return `<div class="it text ${it.style || 'hand'}${on}" data-id="${it.id}" style="${pos}width:${it.w}px"><div class="txt" dir="auto"${ff(it)}>${rich(it.text)}</div>${rz}</div>`;
     case 'note': return `<div class="it note${on}" data-id="${it.id}" style="${pos}width:${it.w}px;height:${it.h}px;--r:${it.r || 0}deg"><div class="paper"><div class="txt" dir="auto"${ff(it)}>${esc(it.text)}</div></div>${rz}</div>`;
     case 'img': return `<div class="it img${tp(it)}${on}" data-id="${it.id}" style="${pos}width:${it.w}px;height:${it.h}px;--r:${it.r || 0}deg"><img ${srcAttr(it.src)} alt="">${capHTML(it)}${rz}</div>`;
-    case 'video': return `<div class="it vid${tp(it)}${on}" data-id="${it.id}" style="${pos}width:${it.w}px;height:${it.h}px;--r:${it.r || 0}deg"><video ${srcAttr(it.src)} controls playsinline preload="metadata"></video><div class="grip"></div>${capHTML(it)}${rz}</div>`;
+    case 'video': return `<div class="it vid${tp(it)}${on}" data-id="${it.id}" style="${pos}width:${it.w}px;height:${it.h}px;--r:${it.r || 0}deg">${vidHTML(it.src)}<div class="grip"></div>${capHTML(it)}${rz}</div>`;
     case 'slot': return `<div class="it slot${tp(it)}${on}" data-id="${it.id}" data-act="slot" style="${pos}width:${it.w}px;height:${it.h}px;--r:${it.r || 0}deg"><span><span class="plus">+</span>Image or video</span>${capHTML(it)}${rz}</div>`;
     case 'link': {
       let dom = ''; try { dom = new URL(it.url).hostname.replace(/^www\./, ''); } catch (e) {}
@@ -471,7 +477,10 @@ function itemHTML(it) {
     }
     case 'embed': {
       if (!CAN_EMBED) return itemHTML({ ...it, type: 'link', w: 260, h: 110, title: EMB_NAME[it.e.p] + ' video' });
-      return `<div class="it emb${on}" data-id="${it.id}" style="${pos}width:${it.w}px;height:${it.h}px"><div class="ebar"><span>${EMB_NAME[it.e.p]}</span><a href="${esc(it.url)}" target="_blank" rel="noopener">Open ↗</a></div><iframe src="${embedSrc(it.e)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>${capHTML(it)}${rz}</div>`;
+      const live = liveEmb.has(it.id);
+      const body = live ? `<iframe src="${embedSrc(it.e, true)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`
+        : `<div class="epost ${it.e.p}">${it.e.p === 'yt' ? `<img src="https://i.ytimg.com/vi/${esc(it.e.id)}/hqdefault.jpg" alt="" loading="lazy">` : `<span class="ename">${EMB_NAME[it.e.p]}</span>`}<button class="eplay" data-act="play" aria-label="Play">▶</button></div>`;
+      return `<div class="it emb${on}" data-id="${it.id}" style="${pos}width:${it.w}px;height:${it.h}px"><div class="ebar"><span>${EMB_NAME[it.e.p]}</span><a href="${esc(it.url)}" target="_blank" rel="noopener">Open ↗</a></div>${body}${capHTML(it)}${rz}</div>`;
     }
     case 'palette': return `<div class="it pal${on}" data-id="${it.id}" style="${pos}width:${it.w}px"><input class="ptitle" data-k="cap" value="${esc(it.cap)}" aria-label="Palette name">${it.cols.map((c, i) => `<div class="swr" data-ci="${i}"><label class="chip" title="Change colour" style="background:${esc(c.h)}"><input type="color" data-cf="h" value="${esc(c.h)}"></label><div class="meta"><input class="nm" data-cf="n" value="${esc(c.n)}" aria-label="Colour name"><span class="hx">${esc(c.h.toUpperCase())}</span></div><button class="dc" data-act="delc" title="Remove colour" aria-label="Remove colour">×</button></div>`).join('')}<button class="addc" data-act="addc">+ colour</button>${rz}</div>`;
     case 'section': return `<div class="it sec${on}" data-id="${it.id}" style="${pos}width:${it.w}px;height:${it.h}px;--lw:${Math.max(6, (it.label || '').length + 2)}ch"><div class="bar"><input class="lbl" data-k="label" value="${esc(it.label)}" aria-label="Area name"></div>${rz}</div>`;
@@ -486,9 +495,23 @@ function itemHTML(it) {
 function measure() {
   for (const el of itemsEl.children) { const it = find(el.dataset.id); if (it && it.type === 'text') it.h = el.offsetHeight; }
 }
+const elCache = new Map();   // id -> { el, sig } : unchanged items keep their DOM (videos/embeds don't reload)
 function renderItems() {
   const order = [...board.items.filter(i => i.type === 'section'), ...board.items.filter(i => i.type !== 'section')];
-  itemsEl.innerHTML = order.map(itemHTML).join('');
+  const keep = new Set(), els = [];
+  for (const it of order) {
+    const sig = JSON.stringify(it) + (liveEmb.has(it.id) ? '|live' : '') + (CAN_EMBED ? '' : '|x');
+    let c = elCache.get(it.id);
+    if (!c || c.sig !== sig) {
+      const t = document.createElement('template'); t.innerHTML = itemHTML(it).trim();
+      const el = t.content.firstElementChild; if (c) c.el.replaceWith(el);
+      c = { el, sig }; elCache.set(it.id, c);
+    }
+    keep.add(it.id); els.push(c.el);
+  }
+  for (const [id, c] of elCache) if (!keep.has(id)) { c.el.remove(); elCache.delete(id); liveEmb.delete(id); }
+  for (const el of [...itemsEl.children]) if (!els.includes(el)) el.remove();
+  els.forEach((el, i) => { if (itemsEl.children[i] !== el) itemsEl.insertBefore(el, itemsEl.children[i] || null); });
   if (gd) hydrate();
   measure(); markSel();
 }
@@ -615,6 +638,8 @@ const OWN_SITE = /github\.io$/.test(location.hostname) || location.protocol === 
 const CAN_EMBED = OWN_SITE;
 let gd = false, gtok = '', gexp = 0, tokenClient = null, rootId = '';
 const mediaCache = new Map(), mediaLoading = new Map();
+const liveEmb = new Set();
+const PHONE = matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 700;
 const GAPI = 'https://www.googleapis.com/drive/v3/files', GUP = 'https://www.googleapis.com/upload/drive/v3/files';
 function loadGis() {
   return new Promise((res, rej) => {
@@ -676,8 +701,28 @@ function mediaUrl(id) {
   if (!mediaLoading.has(id)) mediaLoading.set(id, gfetch(`${GAPI}/${id}?alt=media`, {}, true).then(r => r.blob()).then(b => { const u = URL.createObjectURL(b); mediaCache.set(id, u); return u; }).finally(() => mediaLoading.delete(id)));
   return mediaLoading.get(id);
 }
+function vidHTML(src) {
+  const drive = src && src.startsWith('drive:'), ready = drive && mediaCache.has(src.slice(6));
+  return `<video ${srcAttr(src)} controls playsinline preload="${drive ? 'none' : 'metadata'}"></video>${drive && !ready ? '<button class="vload" data-act="loadv" aria-label="Play video">▶</button>' : ''}`;
+}
+const vidLoaded = [];
+async function loadVideo(btn) {
+  const v = btn.parentElement.querySelector('video'), id = v && v.dataset.src && v.dataset.src.slice(6); if (!id) return;
+  btn.textContent = '…'; btn.disabled = true;
+  try {
+    const u = await mediaUrl(id); v.src = u; btn.remove();
+    vidLoaded.push(id);
+    while (vidLoaded.length > (PHONE ? 2 : 8)) {          // keep memory low: forget the oldest loaded videos
+      const old = vidLoaded.shift(); if (old === id) continue;
+      const ou = mediaCache.get(old); mediaCache.delete(old);
+      document.querySelectorAll(`video[data-src="drive:${old}"]`).forEach(o => { o.removeAttribute('src'); o.load(); const b = document.createElement('button'); b.className = 'vload'; b.dataset.act = 'loadv'; b.textContent = '▶'; o.after(b); });
+      if (ou) URL.revokeObjectURL(ou);
+    }
+    v.play().catch(() => {});
+  } catch (e) { btn.textContent = '▶'; btn.disabled = false; hint('Could not load the video'); }
+}
 function hydrate() {
-  for (const el of document.querySelectorAll('[data-src^="drive:"]')) {
+  for (const el of document.querySelectorAll('img[data-src^="drive:"]')) {
     if (el.getAttribute('src')) continue;
     mediaUrl(el.dataset.src.slice(6)).then(u => { el.src = u; }).catch(() => {});
   }
@@ -720,7 +765,7 @@ function embedOf(url) {
   return null;
 }
 const EMB_NAME = { yt: 'YouTube', ig: 'Instagram', vm: 'Vimeo', tt: 'TikTok' };
-const embedSrc = e => e.p === 'yt' ? `https://www.youtube-nocookie.com/embed/${e.id}?rel=0&playsinline=1` : e.p === 'ig' ? `https://www.instagram.com/${e.k}/${e.id}/embed/` : e.p === 'vm' ? `https://player.vimeo.com/video/${e.id}` : `https://www.tiktok.com/embed/v2/${e.id}`;
+const embedSrc = (e, auto) => e.p === 'yt' ? `https://www.youtube-nocookie.com/embed/${e.id}?rel=0&playsinline=1${auto ? '&autoplay=1' : ''}` : e.p === 'ig' ? `https://www.instagram.com/${e.k}/${e.id}/embed/` : e.p === 'vm' ? `https://player.vimeo.com/video/${e.id}` : `https://www.tiktok.com/embed/v2/${e.id}`;
 const embedSize = e => e.p === 'ig' ? [328, 600] : e.p === 'tt' ? [325, 580] : e.v ? [270, 480] : [480, 270];
 function linkToEmbed(it) {
   const e = embedOf(it.url); if (!e) return false;
@@ -1087,6 +1132,12 @@ itemsEl.addEventListener('click', e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const it = find(b.closest('.it').dataset.id); if (!it) return;
   const a = b.dataset.act;
+  if (a === 'loadv') { loadVideo(b); return; }
+  if (a === 'play') {                                     // only a few live players at once (one on a phone)
+    const max = PHONE ? 1 : 4; liveEmb.add(it.id);
+    for (const id of [...liveEmb]) if (liveEmb.size > max && id !== it.id) liveEmb.delete(id);
+    renderItems(); select(it.id); return;
+  }
   if (a === 'addf') { pushHist(); it.frames.push(blankFrame()); }
   else if (a === 'delf') { if (it.frames.length <= 1) return; pushHist(); it.frames.splice(+b.closest('.fr').dataset.fi, 1); }
   else if (a === 'addc') { pushHist(); it.cols.push({ n: 'Colour', h: '#C9C2B2' }); }
