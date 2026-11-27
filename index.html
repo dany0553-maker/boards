@@ -38,7 +38,7 @@ button{cursor:pointer}
 #top{position:fixed;inset-inline:0;top:0;height:58px;display:flex;align-items:center;gap:10px;padding:env(safe-area-inset-top) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));background:var(--bar);border-bottom:1px solid var(--line);z-index:20}
 #pname{flex:0 1 240px;border:1px solid transparent;background:transparent;border-radius:0;padding:5px 6px;font-size:15px;font-weight:500}
 #pname:hover,#pname:focus{border-color:var(--line);outline:none}
-#tabs{display:flex;gap:18px;margin-inline-start:6px}
+#tabs{display:flex;gap:18px;margin-inline-start:6px;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}#tabs::-webkit-scrollbar{display:none}.tab.add{font-size:18px;line-height:1;padding:2px 6px;color:var(--mute)}.tab.add:hover{color:var(--ink)}#dlg .acts .left{margin-inline-end:auto}
 .tab{border:0;background:none;padding:6px 0;font-size:14px;font-weight:300;color:var(--mute);border-bottom:1px solid transparent;white-space:nowrap}
 .tab b{font-weight:300;margin-inline-end:4px}
 .tab.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:400}
@@ -267,6 +267,7 @@ button{cursor:pointer}
   <nav id="tabs">
     <button class="tab on" data-page="m"><b>01</b>Moodboard</button>
     <button class="tab" data-page="s"><b>02</b>Storyboard</button>
+    <button class="tab add" data-act="addpage" title="Add page" aria-label="Add page">+</button>
   </nav>
   <span id="status">Loading…</span>
   <button class="tb" id="zout" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
@@ -337,7 +338,8 @@ const ff = it => it.font ? ` style="font-family:${fstack(it.font)}"` : '';
 const LEGEND = 'WS: WIDE SHOT · MS: MEDIUM SHOT · CU: CLOSE-UP · OTS: OVER THE SHOULDER · POV: POINT OF VIEW · → CAMERA MOVEMENT';
 
 let db = null, assets = null, online = false;
-let index = [];           // projects: {id,name,updated}
+let index = [];           // projects: {id,name,updated,pages}
+const DEF_PAGES = [{ id: 'm', name: 'Moodboard' }, { id: 's', name: 'Storyboard' }];
 let project = null;       // {id,name}
 let page = 'm';
 let board = null;         // {docId, items, strokes, inkCount}
@@ -606,11 +608,11 @@ async function persist() {
       const items = JSON.stringify(b.items);
       if (items.length > 240000) throw { code: 'too_big' };
       await db.doc('boards/' + b.docId).set({ updated: now, items, inkCount: b.inkCount });
-      await db.doc('index/' + p.id).set({ name: p.name, updated: now });
+      { const ixp = index.find(i => i.id === p.id); await db.doc('index/' + p.id).set({ name: p.name, updated: now, ...(ixp && ixp.pages ? { pages: ixp.pages } : {}) }); }
       touchIndex(now); setStatus('Saved');
     } else if (gd) {
       const blob = new Blob([JSON.stringify({ v: 2, items: b.items, strokes: b.strokes })], { type: 'application/json' });
-      b.fileId = await gMultipart(b.fileId ? {} : { name: b.pg === 's' ? 'storyboard.json' : 'moodboard.json', parents: [p.id], appProperties: { sbPage: b.pg } }, blob, b.fileId);
+      b.fileId = await gMultipart(b.fileId ? {} : { name: b.pg === 's' ? 'storyboard.json' : b.pg === 'm' ? 'moodboard.json' : 'page-' + b.pg + '.json', parents: [p.id], appProperties: { sbPage: b.pg } }, blob, b.fileId);
       await gpatch(p.id, { name: p.name, appProperties: { sbProject: '1', sbUpdated: String(now) } });
       touchIndex(now); setStatus('Saved to Drive');
     } else {
@@ -665,7 +667,7 @@ async function gfetch(url, opt = {}, raw) {
   if (!r.ok) throw { code: 'http', status: r.status };
   return raw ? r : (r.status === 204 ? null : r.json());
 }
-const gq = q => gfetch(`${GAPI}?q=${encodeURIComponent(q + ' and trashed=false')}&fields=${encodeURIComponent('files(id,name,modifiedTime,appProperties)')}&pageSize=1000&spaces=drive`).then(r => r.files || []);
+const gq = q => gfetch(`${GAPI}?q=${encodeURIComponent(q + ' and trashed=false')}&fields=${encodeURIComponent('files(id,name,modifiedTime,appProperties,description)')}&pageSize=1000&spaces=drive`).then(r => r.files || []);
 const gcreate = meta => gfetch(GAPI + '?fields=id,name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta) });
 const gpatch = (id, meta) => gfetch(`${GAPI}/${id}?fields=id`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta) });
 async function gMultipart(meta, blob, id) {
@@ -688,7 +690,7 @@ async function gRoot() {
 }
 async function gProjects() {
   const f = await gq(`'${rootId}' in parents and mimeType='application/vnd.google-apps.folder'`);
-  return f.map(x => ({ id: x.id, name: x.name, updated: +((x.appProperties || {}).sbUpdated) || Date.parse(x.modifiedTime) }));
+  return f.map(x => { let pages = null; try { const d = JSON.parse(x.description || 'null'); if (d && Array.isArray(d.pages) && d.pages.length) pages = d.pages; } catch (e) {} return { id: x.id, name: x.name, updated: +((x.appProperties || {}).sbUpdated) || Date.parse(x.modifiedTime), pages }; });
 }
 async function gLoadPage(pid, pg) {
   const f = await gq(`'${pid}' in parents and appProperties has { key='sbPage' and value='${pg}' }`);
@@ -746,7 +748,7 @@ async function startDrive() {
   index = await gProjects();
   if (!index.length) { await newProject(); return; }
   const last = lsGet('last'), pick = index.find(i => i.id === last) || [...index].sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
-  await openProject(pick.id, lsGet('page') === 's' ? 's' : 'm');
+  await openProject(pick.id, lsGet('page') || 'm');
 }
 
 /* ---------- embeds (YouTube, Shorts, Instagram, Vimeo, TikTok) ---------- */
@@ -790,10 +792,70 @@ async function loadDoc(docId) {
   }
   const raw = lsGet('board.' + docId); return raw ? JSON.parse(raw) : null;
 }
+/* ---------- pages (tabs) ---------- */
+function pagesOf() { const ix = project && index.find(i => i.id === project.id); return (ix && ix.pages && ix.pages.length) ? ix.pages : DEF_PAGES; }
+function pageName(pg) { const x = pagesOf().find(p => p.id === pg); return x ? x.name : 'Page'; }
+function renderTabs() {
+  $('#tabs').innerHTML = pagesOf().map((p, i) => `<button class="tab${p.id === page ? ' on' : ''}" data-page="${esc(p.id)}" title="Double-click to rename or delete"><b>${String(i + 1).padStart(2, '0')}</b><span dir="auto">${esc(p.name)}</span></button>`).join('') + (project && project.id !== 'local' ? '<button class="tab add" data-act="addpage" title="Add page" aria-label="Add page">+</button>' : '');
+  const on = $('#tabs .tab.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+async function savePages(list) {
+  let ix = index.find(i => i.id === project.id);
+  if (!ix) { ix = { id: project.id, name: project.name, updated: Date.now() }; index.push(ix); }
+  ix.pages = list;
+  try {
+    if (gd) await gpatch(project.id, { description: JSON.stringify({ pages: list }) });
+    else if (online) await db.doc('index/' + project.id).set({ name: project.name, updated: Date.now(), pages: list });
+    else lsSet('index', JSON.stringify(index));
+  } catch (e) { hint('Could not save the page list'); }
+  renderTabs();
+}
+function pageTemplate(name) {
+  return [
+    { id: uid(), type: 'text', style: 'title', x: 0, y: 0, w: 1300, text: name },
+    { id: uid(), type: 'script', x: 0, y: 110, w: 1300, h: 700, title: name, script: '', moments: '' },
+    { id: uid(), type: 'story', x: 0, y: 860, title: 'Shots', frames: Array.from({ length: 5 }, blankFrame) }
+  ];
+}
+async function addPage() {
+  if (!project || project.id === 'local') return;
+  const list = pagesOf();
+  const name = await ask('New page', 'Name of the new page', 'Page ' + (list.length + 1), 'Add');
+  if (!name) return;
+  const pg = 'p' + uid().slice(0, 8);
+  await savePages([...list, { id: pg, name }]);
+  await openPage(pg);
+}
+function pageMenu(pg) {
+  const list = pagesOf(), cur = list.find(p => p.id === pg); if (!cur) return;
+  $('#dlg').innerHTML = `<h3>Page</h3><input id="dlgIn" value="${esc(cur.name)}" dir="auto"><div class="acts">${list.length > 1 ? '<button class="tb danger left" id="dlgDel">Delete page</button>' : ''}<button class="tb pri" id="dlgOk">Save</button><button class="tb" id="dlgNo">Cancel</button></div>`;
+  $('#mask').classList.add('show');
+  const inp = $('#dlgIn'); inp.focus(); inp.select();
+  const close = () => $('#mask').classList.remove('show');
+  const save = async () => { const v = inp.value.trim(); close(); if (v && v !== cur.name) await savePages(list.map(p => p.id === pg ? { ...p, name: v } : p)); };
+  $('#dlgOk').onclick = save;
+  $('#dlgNo').onclick = close;
+  inp.onkeydown = e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') close(); };
+  const del = $('#dlgDel');
+  if (del) del.onclick = async () => {
+    close();
+    const ok = await ask(`Delete page "${cur.name}"?`, gd ? 'The page file moves to your Google Drive trash.' : 'Everything on this page will be deleted. This cannot be undone.', null, 'Delete', true);
+    if (!ok) return;
+    try {
+      if (gd) { const f = await gq(`'${project.id}' in parents and appProperties has { key='sbPage' and value='${pg}' }`); for (const x of f) await gpatch(x.id, { trashed: true }); }
+      else if (online) await delDoc(project.id + '_' + pg);
+      else try { localStorage.removeItem('sb2.board.' + project.id + '_' + pg); } catch (e) {}
+    } catch (e) { hint('Delete failed, please try again'); return; }
+    const rest = list.filter(p => p.id !== pg);
+    if (pg === page) { dirty = false; clearTimeout(saveTimer); board = null; }
+    await savePages(rest);
+    if (pg === page) await openPage(rest[0].id);
+  };
+}
 async function openPage(pg, fresh) {
   await flush();
   page = pg; setStatus('Opening…');
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.page === pg));
+  renderTabs();
   const docId = project.id + '_' + pg;
   let b = fresh ? null : gd ? await gLoadPage(project.id, pg) : await loadDoc(docId);
   if (!b && pg === 'm' && !fresh && !gd) {               // a board saved by the first version of the app
@@ -801,7 +863,7 @@ async function openPage(pg, fresh) {
     if (old) { b = { docId, items: old.items, strokes: old.strokes, inkCount: 0 }; b._migrated = true; }
   }
   let created = false;
-  if (!b) { const t = pg === 'm' ? motherTemplate(project.name) : { items: storyTemplate(), strokes: [] }; b = { docId, items: t.items, strokes: t.strokes, inkCount: 0 }; created = true; }
+  if (!b) { const t = pg === 'm' ? motherTemplate(project.name) : { items: pg === 's' ? storyTemplate() : pageTemplate(pageName(pg)), strokes: [] }; b = { docId, items: t.items, strokes: t.strokes, inkCount: 0 }; created = true; }
   lastChunks = b._chunks || []; delete b._chunks; b.pg = pg;
   if (CAN_EMBED) b.items.forEach(it => { if (it.type === 'link') linkToEmbed(it); });
   board = b; sel = null; selS.clear(); selK.clear(); undoS = []; redoS = []; updHist();
@@ -814,7 +876,8 @@ async function openProject(id, pg) {
   const ix = index.find(i => i.id === id); if (!ix) return;
   project = { id, name: ix.name };
   $('#pname').value = project.name;
-  await openPage(pg || 'm');
+  const pl = pagesOf(); if (!pg || !pl.some(x => x.id === pg)) pg = pl[0].id;
+  await openPage(pg);
   drawList();
 }
 async function newProject() {
@@ -844,8 +907,8 @@ async function deleteProject(id) {
   if (!ok) return;
   try {
     if (gd) await gpatch(id, { trashed: true });
-    else if (online) { for (const d of [id + '_m', id + '_s', id]) await delDoc(d); await db.doc('index/' + id).delete(); }
-    else for (const d of [id + '_m', id + '_s', id]) try { localStorage.removeItem('sb2.board.' + d); } catch (e) {}
+    else if (online) { for (const d of [...(ix.pages || DEF_PAGES).map(x => id + '_' + x.id), id]) await delDoc(d); await db.doc('index/' + id).delete(); }
+    else for (const d of [...(ix.pages || DEF_PAGES).map(x => id + '_' + x.id), id]) try { localStorage.removeItem('sb2.board.' + d); } catch (e) {}
   } catch (e) { hint('Delete failed, please try again'); return; }
   index = index.filter(i => i.id !== id); if (!online && !gd) lsSet('index', JSON.stringify(index));
   if (project && project.id === id) {
@@ -1253,7 +1316,9 @@ $('#zout').onclick = () => { const r = sRect(); zoomAt(r.left + r.width / 2, r.t
 $('#zfit').onclick = fit;
 $('#pname').addEventListener('input', e => { if (!project) return; project.name = e.target.value || 'Project'; changed(); });
 $('#pname').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
-$('#tabs').addEventListener('click', e => { const t = e.target.closest('.tab'); if (t && project && t.dataset.page !== page) openPage(t.dataset.page); });
+$('#tabs').addEventListener('click', e => { const t = e.target.closest('.tab'); if (!t || !project) return; if (t.dataset.act === 'addpage') { addPage(); return; } if (t.dataset.page !== page) openPage(t.dataset.page); });
+$('#tabs').addEventListener('dblclick', e => { const t = e.target.closest('.tab[data-page]'); if (t && project) pageMenu(t.dataset.page); });
+$('#tabs').addEventListener('contextmenu', e => { const t = e.target.closest('.tab[data-page]'); if (t && project) { e.preventDefault(); pageMenu(t.dataset.page); } });
 $('#menu').onclick = () => $('#drawer').classList.contains('open') ? closeDrawer() : openDrawer();
 $('#newP').onclick = newProject;
 $('#gconnect').onclick = connectDrive;
@@ -1290,7 +1355,7 @@ async function boot() {
   if (!index.length) { index.push({ id: project.id, name: project.name, updated: Date.now() }); await persist(); if (!online) setStatus('Offline – saved in this browser only'); }
   else {
     const last = lsGet('last'), pick = index.find(i => i.id === last) || [...index].sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
-    await openProject(pick.id, lsGet('page') === 's' ? 's' : 'm');
+    await openProject(pick.id, lsGet('page') || 'm');
   }
   drawList();
 }
