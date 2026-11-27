@@ -796,7 +796,7 @@ async function loadDoc(docId) {
 function pagesOf() { const ix = project && index.find(i => i.id === project.id); return (ix && ix.pages && ix.pages.length) ? ix.pages : DEF_PAGES; }
 function pageName(pg) { const x = pagesOf().find(p => p.id === pg); return x ? x.name : 'Page'; }
 function renderTabs() {
-  $('#tabs').innerHTML = pagesOf().map((p, i) => `<button class="tab${p.id === page ? ' on' : ''}" data-page="${esc(p.id)}" title="Double-click to rename or delete"><b>${String(i + 1).padStart(2, '0')}</b><span dir="auto">${esc(p.name)}</span></button>`).join('') + (project && project.id !== 'local' ? '<button class="tab add" data-act="addpage" title="Add page" aria-label="Add page">+</button>' : '');
+  $('#tabs').innerHTML = pagesOf().map((p, i) => `<button class="tab${p.id === page ? ' on' : ''}" data-page="${esc(p.id)}" title="Double-click to rename or delete"><span dir="auto">${esc(p.name)}</span></button>`).join('') + (project && project.id !== 'local' ? '<button class="tab add" data-act="addpage" title="Add page" aria-label="Add page">+</button>' : '');
   const on = $('#tabs .tab.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 async function savePages(list) {
